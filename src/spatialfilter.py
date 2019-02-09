@@ -10,7 +10,7 @@ def gaussian(src, level):
 
 def laplacian(gpA, level):
 	lpA = [gpA[level]]
-	for i in xrange(5,0,-1):
+	for i in range(5,0,-1):
 	    GE = cv2.pyrUp(gpA[i])
 	    L = cv2.subtract(gpA[i-1],GE)
 	    lpA.append(L)

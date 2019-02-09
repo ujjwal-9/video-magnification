@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import cv2
+
 #temporal IIR filtering an image
 def temporalIIRFilter(src, level):
     temp1 = (1.0 - cuttofFreqHigh) * lowpass1[level] + cuttofFreqHigh * src
@@ -9,7 +11,7 @@ def temporalIIRFilter(src, level):
     return lowpass1[level] - lowpass2[level]
 
 #temporalIdalFilter - temporal IIR filtering an image pyramid of concatenated frames
-def temporalidealFilter(src):
+def temporalIdealFilter(src):
 	channels = [src[:,:,0], src[:,:,1], src[:,:,2]]
 	for i in range(3):
 		current = src[i]
@@ -18,16 +20,17 @@ def temporalidealFilter(src):
 		tempimg = cv2.copyMakeBorder(current,0,height-current.shape[0],0,width-current.shape[1],cv2.BORDER_CONSTANT, 0)
 		tempimg = cv2.dft(tempimg, flags=cv2.DFT_ROWS | cv2.DFT_SCALE, tempimg.shape[0])
 		filter_ = tempimg
-		createIdealBandpassFilter(filter_, cuttofFreqLow, cuttofFreqHigh, rate)
+		filter_ = createIdealBandpassFilter(filter_, cuttofFreqLow, cuttofFreqHigh, rate)
 		tempimg = cv2.mulSpectrums(tempimg, filter_, cv2.DFT_ROWS)
 		tempimg = cv2.idft(tempimg, flags=cv2.DFT_ROWS | cv2.DFT_SCALE, tempimg.shape[0])
 		channels[i] = tempimg[:current.shape[0], :current.shape[1]]
-	cv2.normalize(channels, 0, 1, cv2.NORM_MINMAX)
+	channels = cv2.normalize(channels, 0, 1, cv2.NORM_MINMAX)
+	return channels
 
 #create a 1D ideal band-pass filter
-def createIdealBandpassFilter(filter, fl, fh, rate):
-	width = filter.shape[1]
-	height = filter.shape[0]
+def createIdealBandpassFilter(filter_, fl, fh, rate):
+	width = filter_.shape[1]
+	height = filter_.shape[0]
 
 	Fl = 2 * fl * width / rate;
     Fh = 2 * fh * width / rate;
@@ -38,4 +41,5 @@ def createIdealBandpassFilter(filter, fl, fh, rate):
     			response = 1.0
     		else:
     			response = 0.0
-    		filter[i,j] = response
+    		filter_[i,j] = response
+    return filter_
