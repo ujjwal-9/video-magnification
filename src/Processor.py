@@ -4,7 +4,7 @@ import cv2
 from spatialfilter import buildLaplacianPyramid, buildGaussianPyramid, reconImgFromLaplacianPyramid, upsamplingFromGaussianPyramid
 import datetime
 
-class VideoProcessor:
+class Processor:
     def __init__(
         self,
         writer=None,
@@ -394,12 +394,3 @@ class VideoProcessor:
             self.jumpTo(0)
             self.curPos = 0
             self.pauseIt()
-
-
-
-
-
-
-
-
-
