@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import numpy as np
 import cv2
-from spatialfilter import buildLaplacianPyramid, buildGaussianPyramid
+from spatialfilter import buildLaplacianPyramid, buildGaussianPyramid, reconImgFromLaplacianPyramid, upsamplingFromGaussianPyramid
+import datetime
 
 class VideoProcessor:
     def __init__(
@@ -60,6 +61,8 @@ class VideoProcessor:
         self.tempWriter = tempWriter
         self.input_ = input_
         self.outputFile = outputFile
+        self.lowpass1 = lowpass1
+        self.lowpass2 = lowpass2
 
         def setDelay(self, d):
             self.delay = d
@@ -103,10 +106,10 @@ class VideoProcessor:
             self.length = l
             cap.release()
 
-        def spatialFilter(self, src, pyramid, spatialType):
-            if spatialType == 'LAPLACIAN':
+        def spatialFilter(self, src, pyramid):
+            if self.spatialType == 'LAPLACIAN':
                 return buildLaplacianPyramid(src, self.levels)
-            elif spatialType == 'GAUSSIAN':
+            elif self.spatialType == 'GAUSSIAN':
                 return buildGaussianPyramid(src, self.levels)
 
         def temporalFilter(self, src):
@@ -119,11 +122,11 @@ class VideoProcessor:
 
         #temporal IIR filtering an image
         def temporalIIRFilter(src):
-            temp1 = (1-self.fh)*lowpass1[self.curLevel] + self.fh*src
-            temp2 = (1-self.fl)*lowpass2[self.curLevel] + self.fl*src
-            lowpass1[self.curLevel] = temp1
-            lowpass2[self.curLevel] = temp2
-            return lowpass1[self.curLevel] - lowpass2[self.curLevel]
+            temp1 = (1-self.fh)*self.lowpass1[self.curLevel] + self.fh*src
+            temp2 = (1-self.fl)*self.lowpass2[self.curLevel] + self.fl*src
+            self.lowpass1[self.curLevel] = temp1
+            self.lowpass2[self.curLevel] = temp2
+            return self.lowpass1[self.curLevel] - self.lowpass2[self.curLevel]
 
         #temporalIdalFilter - temporal IIR filtering an image pyramid of concatenated frames
         def temporalIdealFilter(src):
@@ -233,8 +236,17 @@ class VideoProcessor:
             self.curIndex = startIndex
             return True
 
-        # def createTemp(self, framerate, isColor):
-
+        def createTemp(self, framerate=0.0, isColor=True):
+            self.tempFile = "temp_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
+            self.tempFileList.append(self.tempFile)
+            if framerate == 0.0:
+                framerate = self.getFrameRate()
+            self.tempWriter = cv2.VideoCapture(
+                self.tempFile,
+                cv2.VideoWriter_fourcc('M','J','P','G'),
+                framerate,
+                self.getFrameSize(),
+                isColor)
 
         def setSpatialFilter(self, type_):
             self.spatialType = type_
@@ -242,10 +254,146 @@ class VideoProcessor:
         def setTemporalFilter(self, type_):
             self.temporalType = type_
 
+        def stopIt(self):
+            self.stop = True
+
+        def prevFrame(self):
+            if self.isStop():
+                self.pauseIt()
+            if self.curPos >= 0:
+                self.curPos = -1
+                self.jumpTo(self.curPos)
+
+        def nextFrame(self):
+            if self.isStop():
+                self.pauseIt()
+            self.curPos += 1
+            if self.curPos <= self.length:
+                self.curPos += 1
+                self.jumpTo(self.curPos)
+
+        def jumpTo(self, index):
+            if self.index >= self.index:
+                return 1
+            re = self.cap.set(cv2.CAP_PROP_POS_FRAMES, index)
+            if re and not self.isStop():
+                frame = self.cap.read()
+            return re
+
+        def jumpToMS(self, pos):
+            return self.cap.set(cv2.CAP_PROP_POS_MSEC, pos)
+
+        def close(self):
+            self.rate = 0
+            self.length = 0
+            self.modify = 0
+            self.cap.release()
+            self.writer.release()
+            self.tempWriter.release()
+
+        def isStop(self):
+            return self.stop
+
+        def isModified(self):
+            return self.modify
+
+        def isOpened(self):
+            return self.cap.isOpened()
+
+        def getNextFrame(self):
+            return self.cap.read()
+
+        def writeNextFrame(self, frame):
+            if len(self.extension):
+                curindex = str(self.curIndex + 1)
+                length = len(self.outputFile + curindex + self.extension)
+                ss = self.outputFile + '0' * (self.digits - length) + curindex + self.extension
+                return cv2.imwrite(ss,frame)
+            else:
+                return self.writer.write(frame)
+
+        def playIt(self):
+            if self.isOpened():
+                return
+            self.stop = False
+            while not self.isStop():
+                input_ = self.getNextFrame()
+                if not input_:
+                    break
+                self.curPos = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
+
+        def pauseIt(self):
+            self.stop = True
+
+
         def motionMagnify(self):
             self.setSpatialFilter('LAPLACIAN')
             self.setTemporalFilter('IIR')
+            self.createTemp()
+            if not self.isOpened():
+                return
+            self.modify = True
+            self.stop = False
+            pos = self.curPos
+            self.jumpTo(0)
+            while not self.isStop():
+                input_ = self.getNextFrame()
+                if not input_:
+                    break
+                input_ = cv2.convertScaleAbs(input_, alpha=1.0/255.0)
+                input_ = cv2.cvtColor(input_, cv2.COLOR_BGR2Lab)
+                pyramid = self.spatialFilter(input_)
+                if self.fnumber == 0:
+                    self.lowpass1 = pyramid
+                    self.lowpass2 = pyramid
+                    filtered = pyramid
+                else:
+                    for i in range(self.levels):
+                        self.curLevel = i
+                        filtered[i] = self.temporalFilter(pyramid[i])
+                    filterSize = filtered[0].shape
+                    w = filterSize[1]
+                    h = filterSize[0]
 
+                    self.delta = self.lambda_c / 8.0 / (1.0 + self.alpha)
+                    self.exaggeration_factor = 2.0
+                    import math
+                    self.lambda_ = math.sqrt(w * w + h * h) / 3
+                    for i in reversed(range(self.levels+1)):
+                        self.curLevel = i
+                        filtered[i] = self.amplify(filtered[i])
+                        self.lambda_ /= 2.0
+
+                motion = reconImgFromLaplacianPyramid(filtered, self.levels)
+                motion = self.attenuate(motion)
+                if self.fnumber > 0:
+                    input_ += motion
+                output = input_
+                output = cv2.cvtColor(output, cv2.COLOR_Lab2BGR)
+                output = cv2.convertScaleAbs(output, alpha=255.0, beta=1.0/255.0)
+                output = output.astype(np.uint8)
+                self.tempWriter.write(output)
+            self.tempWriter.release()
+            self.setInput(self.tempFile)
+            self.jumpTo(pos)
+
+        def writeOutput(self):
+            if not self.isOpened() or self.writer.isOpened():
+                return
+            pos = self.curPos
+            self.jumpTo(0)
+            input_ = self.getNextFrame()
+            while input_:
+                if len(self.outputFile) != 0:
+                    self.writeNextFrame(input_)
+            self.modify = False
+            self.writer.release()
+            self.jumpTo(pos)
+
+        def revertVideo(self):
+            self.jumpTo(0)
+            self.curPos = 0
+            self.pauseIt()
 
 
 
