@@ -452,3 +452,7 @@ class Processor:
             self.tempWriter.release()
             self.setInput(self.tempFile)
             self.jumpTo(pos)
+
+if __name__ == '__main__':
+    cap = cv2.VideoCapture('../Videos/test.mp4')
+    Processor(cap=cap)
