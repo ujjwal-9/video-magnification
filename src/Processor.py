@@ -7,6 +7,7 @@ import datetime
 class Processor(object):
     def __init__(
         self,
+        f = "",
         cap = cv2.VideoCapture(),
         writer = cv2.VideoWriter(),
         tempWriter = cv2.VideoWriter(),
@@ -32,7 +33,9 @@ class Processor(object):
         lambda_ = 0,
         lowpass1 = np.array([]),
         lowpass2 = np.array([]),
+        tempFile = None,
         outputFile = None):
+        self.file = f
         self.delay = delay
         self.rate = rate
         self.fnumber = fnumber
@@ -55,12 +58,17 @@ class Processor(object):
         self.lambda_ = lambda_
         self.spatialType = ""
         self.temporalType = ""
-        self.cap = cap
         self.writer = writer #cv::VideoWriter
         self.tempWriter = tempWriter
         self.outputFile = outputFile
+        self.tempFile = tempFile
+        self.tempFileList = []
         self.lowpass1 = lowpass1
         self.lowpass2 = lowpass2
+        if len(self.file) != 0:
+            self.cap = cv2.VideoCapture(self.file)
+        else:
+            self.cap = cap
 
     def setDelay(self, d):
         self.delay = d
@@ -75,7 +83,7 @@ class Processor(object):
         if self.cap.isOpened():
             w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            return (w, h)
+            return (int(w), int(h))
 
     def getFrameNumber(self):
         f = self.cap.get(cv2.CAP_PROP_POS_FRAMES)
@@ -97,11 +105,13 @@ class Processor(object):
         return l
 
     def calculateLength(self):
-        l = 0
-        tempCap = cv2.VideoCapture(self.tempFile)
-        while tempCap.read():
-            l += 1
-        self.length = l
+        # l = 0
+        tempCap = cv2.VideoCapture(self.file)
+        self.length = int(tempCap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # while tempCap.isOpened():
+        #     print(l)
+        #     l += 1
+        # self.length = l
         tempCap.release()
 
     def spatialFilter(self, src, pyramid):
@@ -119,7 +129,7 @@ class Processor(object):
             return dst
 
     #temporal IIR filtering an image
-    def temporalIIRFilter(src):
+    def temporalIIRFilter(self, src):
         temp1 = (1-self.fh)*self.lowpass1[self.curLevel] + self.fh*src
         temp2 = (1-self.fl)*self.lowpass2[self.curLevel] + self.fl*src
         self.lowpass1[self.curLevel] = temp1
@@ -127,7 +137,7 @@ class Processor(object):
         return self.lowpass1[self.curLevel] - self.lowpass2[self.curLevel]
 
     #temporalIdalFilter - temporal IIR filtering an image pyramid of concatenated frames
-    def temporalIdealFilter(src):
+    def temporalIdealFilter(self, src):
         channels = [src[:,:,0], src[:,:,1], src[:,:,2]]
         for i in range(3):
             current = src[i]
@@ -136,7 +146,7 @@ class Processor(object):
             tempImg = cv2.copyMakeBorder(current,0,height-current.shape[0],0,width-current.shape[1],cv2.BORDER_CONSTANT, 0)
             tempImg = cv2.dft(tempImg, flags=cv2.DFT_ROWS | cv2.DFT_SCALE)
             filter_ = tempImg
-            filter_ = createIdealBandpassFilter(filter_, self.fl, self.fh, self.rate)
+            filter_ = self.createIdealBandpassFilter(filter_, self.fl, self.fh, self.rate)
             tempImg = cv2.mulSpectrums(tempImg, filter_, cv2.DFT_ROWS)
             tempImg = cv2.idft(tempImg, flags=cv2.DFT_ROWS | cv2.DFT_SCALE)
             channels[i] = tempImg[:current.shape[0], :current.shape[1]]
@@ -144,7 +154,7 @@ class Processor(object):
         return channels
 
     #create a 1D ideal band-pass filter
-    def createIdealBandpassFilter(filter_, fl, fh, rate):
+    def createIdealBandpassFilter(self, filter_, fl, fh, rate):
         width = filter_.shape[1]
         height = filter_.shape[0]
 
@@ -237,15 +247,16 @@ class Processor(object):
         self.curIndex = startIndex
         return True
 
-    def createTemp(self, framerate=0.0, isColor=True):
-        self.tempFile = "temp_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
+    def createTemp(self, name="temp", framerate=0.0, isColor=True):
+        self.tempFile = "../Results/" + name + "_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
         self.tempFileList.append(self.tempFile)
+        # print(type(self.getFrameSize(),))
         if framerate == 0.0:
             framerate = self.getFrameRate()
-        self.tempWriter = cv2.VideoCapture(
+        self.tempWriter = cv2.VideoWriter(
             self.tempFile,
             cv2.VideoWriter_fourcc('M','J','P','G'),
-            framerate,
+            int(framerate),
             self.getFrameSize(),
             isColor)
 
@@ -274,7 +285,7 @@ class Processor(object):
             self.jumpTo(self.curPos)
 
     def jumpTo(self, index):
-        if self.index >= self.index:
+        if index >= self.length:
             return 1
         re = self.cap.set(cv2.CAP_PROP_POS_FRAMES, index)
         if re and not self.isStop():
@@ -350,7 +361,7 @@ class Processor(object):
     def motionMagnify(self):
         self.setSpatialFilter('LAPLACIAN')
         self.setTemporalFilter('IIR')
-        self.createTemp()
+        self.createTemp(name="motion")
         if not self.isOpened():
             return
         self.modify = True
@@ -361,6 +372,7 @@ class Processor(object):
             input_ = self.getNextFrame()
             if not input_:
                 break
+            print(input_)
             input_ = cv2.convertScaleAbs(input_, alpha=1.0/255.0)
             input_ = cv2.cvtColor(input_, cv2.COLOR_BGR2Lab)
             pyramid = self.spatialFilter(input_)
@@ -454,8 +466,5 @@ class Processor(object):
         self.jumpTo(pos)
 
 if __name__ == '__main__':
-    cap = cv2.VideoCapture('../Videos/test.mp4')
-    m = Processor(cap=cap)
-    m.calculateLength()
-    print(m.length)
+    m = Processor(f='../Videos/test.mp4')
     m.motionMagnify()
