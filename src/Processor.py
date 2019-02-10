@@ -247,8 +247,11 @@ class Processor(object):
         self.curIndex = startIndex
         return True
 
-    def createTemp(self, name="temp", framerate=0.0, isColor=True):
-        self.tempFile = "../Results/" + name + "_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
+    def createTemp(self, name="evm", framerate=0.0, isColor=True):
+        if self.file is None:
+            self.tempFile = "../Results/" + name + "_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
+        else:
+            self.tempFile = "../Results/" + (str(self.file.split('/')[-1])).split('.')[0] + ".avi"
         self.tempFileList.append(self.tempFile)
         # print(type(self.getFrameSize(),))
         if framerate == 0.0:
@@ -372,7 +375,6 @@ class Processor(object):
             input_ = self.getNextFrame()
             if not input_:
                 break
-            print(input_)
             input_ = cv2.convertScaleAbs(input_, alpha=1.0/255.0)
             input_ = cv2.cvtColor(input_, cv2.COLOR_BGR2Lab)
             pyramid = self.spatialFilter(input_)
@@ -414,7 +416,7 @@ class Processor(object):
         self.setSpatialFilter('GAUSSIAN')
         self.setTemporalFilter('IDEAL')
 
-        self.createTemp()
+        self.createTemp(name="color")
 
         frames = []
         downSampledFrames = []
@@ -466,5 +468,10 @@ class Processor(object):
         self.jumpTo(pos)
 
 if __name__ == '__main__':
-    m = Processor(f='../Videos/test.mp4')
-    m.motionMagnify()
+    import os
+    DATA_DIR = '../Videos/'
+    for file_ in os.listdir(DATA_DIR):
+        if file_.endswith(".mp4"):
+            print("Processing : " + file_)
+            m = Processor(f=DATA_DIR+file_)
+            m.motionMagnify()
