@@ -7,33 +7,32 @@ import datetime
 class Processor:
     def __init__(
         self,
-        writer=None,
-        tempWriter = None,
-        input_ = None,
+        writer = cv2.VideoWriter(),
+        tempWriter = cv2.VideoWriter(),
         outputFile = None,
-        cap=None,
-        delay=-1,
-        rate=0,
-        fnumber=0,
-        length=0,
-        stop=True,
-        modify=False,
-        curPos=0,
-        curIndex=0,
-        curLevel=0,
-        digits=0,
-        extension=".avi",
-        levels=4,
-        alpha=10,
-        lambda_c=80,
-        fl=0.05,
-        fh=0.4,
-        chromAttenuation=0.1,
-        delta=0,
-        exaggeration_factor=2.0,
-        lambda_=0,
-        lowpass1=None,
-        lowpass2=None):
+        cap = cv2.VideoCapture(),
+        delay = -1,
+        rate = 0,
+        fnumber = 0,
+        length = 0,
+        stop = True,
+        modify = False,
+        curPos = 0,
+        curIndex = 0,
+        curLevel = 0,
+        digits = 0,
+        extension = ".avi",
+        levels = 4,
+        alpha = 10,
+        lambda_c = 80,
+        fl = 0.05,
+        fh = 0.4,
+        chromAttenuation = 0.1,
+        delta = 0,
+        exaggeration_factor = 2.0,
+        lambda_ = 0,
+        lowpass1 = np.array([]),
+        lowpass2 = np.array([])):
         self.delay = delay
         self.rate = rate
         self.fnumber = fnumber
@@ -59,7 +58,6 @@ class Processor:
         self.cap = cap
         self.writer = writer #cv::VideoWriter
         self.tempWriter = tempWriter
-        self.input_ = input_
         self.outputFile = outputFile
         self.lowpass1 = lowpass1
         self.lowpass2 = lowpass2
@@ -98,13 +96,13 @@ class Processor:
             l = 1000.0 * self.length / self.rate
             return l
 
-        def calculateLength(self, filename):
+        def calculateLength(self):
             l = 0
-            cap = cv2.VideoCapture(filename)
-            while cap.isOpened():
+            tempCap = cv2.VideoCapture(self.tempFile)
+            while tempCap.read():
                 l += 1
             self.length = l
-            cap.release()
+            tempCap.release()
 
         def spatialFilter(self, src, pyramid):
             if self.spatialType == 'LAPLACIAN':
@@ -222,7 +220,10 @@ class Processor:
             if self.cap.open(fileName):
                 self.length = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
                 self.rate = self.getFrameRate()
-                self.input_ = self.getNextFrame()
+                input_ = self.getNextFrame()
+                return True
+            else:
+                return False
 
         # def setOutput(self, fileName, codec, framerate, isColor):
         #     self.outputFile = fileName
@@ -325,6 +326,8 @@ class Processor:
         def pauseIt(self):
             self.stop = True
 
+        def isOpened(self):
+            return self.cap.isOpened()
 
         def motionMagnify(self):
             self.setSpatialFilter('LAPLACIAN')
