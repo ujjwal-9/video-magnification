@@ -7,10 +7,9 @@ import datetime
 class Processor:
     def __init__(
         self,
+        cap = cv2.VideoCapture(),
         writer = cv2.VideoWriter(),
         tempWriter = cv2.VideoWriter(),
-        outputFile = None,
-        cap = cv2.VideoCapture(),
         delay = -1,
         rate = 0,
         fnumber = 0,
@@ -32,7 +31,8 @@ class Processor:
         exaggeration_factor = 2.0,
         lambda_ = 0,
         lowpass1 = np.array([]),
-        lowpass2 = np.array([])):
+        lowpass2 = np.array([]),
+        outputFile = None):
         self.delay = delay
         self.rate = rate
         self.fnumber = fnumber
@@ -329,6 +329,24 @@ class Processor:
         def isOpened(self):
             return self.cap.isOpened()
 
+        def writeOutput(self):
+            if not self.isOpened() or self.writer.isOpened():
+                return
+            pos = self.curPos
+            self.jumpTo(0)
+            input_ = self.getNextFrame()
+            while input_:
+                if len(self.outputFile) != 0:
+                    self.writeNextFrame(input_)
+            self.modify = False
+            self.writer.release()
+            self.jumpTo(pos)
+
+        def revertVideo(self):
+            self.jumpTo(0)
+            self.curPos = 0
+            self.pauseIt()
+
         def motionMagnify(self):
             self.setSpatialFilter('LAPLACIAN')
             self.setTemporalFilter('IIR')
@@ -380,20 +398,57 @@ class Processor:
             self.setInput(self.tempFile)
             self.jumpTo(pos)
 
-        def writeOutput(self):
-            if not self.isOpened() or self.writer.isOpened():
-                return
-            pos = self.curPos
-            self.jumpTo(0)
-            input_ = self.getNextFrame()
-            while input_:
-                if len(self.outputFile) != 0:
-                    self.writeNextFrame(input_)
-            self.modify = False
-            self.writer.release()
-            self.jumpTo(pos)
+        def colorMagnify(self):
+            self.setSpatialFilter('GAUSSIAN')
+            self.setTemporalFilter('IDEAL')
 
-        def revertVideo(self):
+            self.createTemp()
+
+            frames = []
+            downSampledFrames = []
+
+            if not self.isOpened():
+                return
+
+            self.modify = True
+            self.stop = False
+            pos = self.curPos
+
             self.jumpTo(0)
-            self.curPos = 0
-            self.pauseIt()
+
+            input_ = self.getNextFrame()
+
+            while input_ and not self.isStop():
+                temp = input_.astype(np.int32)
+                frames.append(temp)
+                pyramid = self.spatialFilter(temp)
+                downSampledFrames.append(pyramid[self.levels-1])
+
+            frames = np.array(frames)
+            downSampledFrames = np.array(downSampledFrames)
+
+            if self.isStop():
+                self.fnumber = 0
+                return
+
+            videoMat = self.concat(downSampledFrames)
+            filtered = self.temporalFilter(videoMat)
+            filtered = self.amplify(filtered)
+            filteredFrames = self.deConcat(filtered,downSampledFrames[0].shape)
+
+            self.fnumber = 0
+            for i in range(self.length-1):
+                if self.isStop():
+                    break
+                motion = upsamplingFromGaussianPyramid(filteredFrames[i], self.levels)
+                motion = np.resize(motion, (frames[0]).shape)
+                temp = frames[i] + motion
+                output = temp
+                minVal, maxVal, _, _ = cv2.minMaxLoc(output)
+                output = cv2.convertScaleAbs(output, alpha=255.0/(maxVal-minVal), beta=(-minVal)*255.0/(maxVal-minVal))
+                output = output.astype(np.uint8)
+                self.tempWriter.write(output)
+
+            self.tempWriter.release()
+            self.setInput(self.tempFile)
+            self.jumpTo(pos)
