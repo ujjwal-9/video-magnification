@@ -2,28 +2,42 @@
 import cv2
 import numpy as np
 
-def buildGaussianPyramid(src, levels):
-	G = src.copy()
-	gpA = [G]
-	for i in range(levels):
-	    G = cv2.pyrDown(G)
-	    gpA.append(G)
-	gpA = np.array(gpA)
-	return gpA
+def buildGaussianPyramid(img, levels):
+	if levels < 1:
+		print("Level should be greater than 1")
+		return False
+	currImg = img
+	pyramid = []
+	for l in range(levels):
+		down = cv2.pyrDown(currImg)
+		pyramid.append(down)
+		currImg = down
+	return np.array(pyramid)
 
-def buildLaplacianPyramid(src, levels):
-	lpA = [src[levels]]
-	for i in range(5,0,-1):
-	    GE = cv2.pyrUp(src[i])
-	    L = cv2.subtract(src[i-1],GE)
-	    lpA.append(L)
-	lpA = np.array(lpA)
-	return lpA
+def buildLaplacianPyramid(img, levels):
+	print(img.shape)
+	if levels < 1:
+		print("Levels should be greater than 1")
+		return False
+	currImg = img
+	pyramid = []
+	for l in range(levels):
+		down = cv2.pyrDown(currImg)
+		h,w,c = currImg.shape
+		# print("currImg:", currImg.shape)
+		up = cv2.pyrUp(down, dstsize=(w,h))
+		# print("up:", up.shape)
+		lap = currImg - up
+		pyramid.append(lap)
+		currImg = down
+	pyramid.append(currImg)
+	return np.array(pyramid)
 
 def reconImgFromLaplacianPyramid(pyramid, levels):
 	currentImg = pyramid[levels]
 	for l in reversed(range(levels)):
-		up = cv2.pyrUp(currentImg, pyramid[l].shape)
+		h,w,c = pyramid[l].shape
+		up = cv2.pyrUp(currentImg, dstsize=(w,h))
 		currentImg = up + pyramid[l]
 	return currentImg
 
@@ -33,3 +47,11 @@ def upsamplingFromGaussianPyramid(src, levels):
 		up = cv2.pyrUp(currentLevel)
 		currentLevel = up
 	return currentLevel
+
+if __name__ == '__main__':
+	img = cv2.imread('../Videos/test.jpg')
+	print("image: ", img.shape)
+	gpy = buildGaussianPyramid(img, 4)
+	print("Gaussian: ", gpy.shape)
+	lpy = buildLaplacianPyramid(img, 4)
+	print("Laplacian: ", lpy.shape)

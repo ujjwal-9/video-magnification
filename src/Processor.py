@@ -114,7 +114,7 @@ class Processor(object):
         # self.length = l
         tempCap.release()
 
-    def spatialFilter(self, src, pyramid):
+    def spatialFilter(self, src):
         if self.spatialType == 'LAPLACIAN':
             return buildLaplacianPyramid(src, self.levels)
         elif self.spatialType == 'GAUSSIAN':
@@ -249,16 +249,16 @@ class Processor(object):
 
     def createTemp(self, name="evm", framerate=0.0, isColor=True):
         if self.file is None:
-            self.tempFile = "../Results/" + name + "_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".avi"
+            self.tempFile = "../Results/" + name + "_" + datetime.datetime.now().strftime("%y%m%d%H%M")+".mp4"
         else:
-            self.tempFile = "../Results/" + (str(self.file.split('/')[-1])).split('.')[0] + ".avi"
+            self.tempFile = "../Results/" + (str(self.file.split('/')[-1])).split('.')[0] + ".mp4"
         self.tempFileList.append(self.tempFile)
         # print(type(self.getFrameSize(),))
         if framerate == 0.0:
             framerate = self.getFrameRate()
         self.tempWriter = cv2.VideoWriter(
             self.tempFile,
-            cv2.VideoWriter_fourcc('M','J','P','G'),
+            cv2.VideoWriter_fourcc(*'XVID'),
             int(framerate),
             self.getFrameSize(),
             isColor)
@@ -372,8 +372,8 @@ class Processor(object):
         pos = self.curPos
         self.jumpTo(0)
         while not self.isStop():
-            input_ = self.getNextFrame()
-            if not input_:
+            i_, input_ = self.getNextFrame()
+            if not i_:
                 break
             input_ = cv2.convertScaleAbs(input_, alpha=1.0/255.0)
             input_ = cv2.cvtColor(input_, cv2.COLOR_BGR2Lab)
